@@ -112,6 +112,19 @@ test into Prometheus. It is intended to aid organizations who are migrating from
 solution to Prometheus. And since Prometheus stores numeric data and not text results the ssh_exporter
 compares \<pattern\> against the output of the command and returns a true or false.
 
+##### \<regexp\> (optional)
+
+A regular expression pattern with capture groups for extracting numeric values from command output. 
+When specified along with \<metric_name\>, ssh_exporter will extract the first capture group from 
+the first match and export it as a Prometheus gauge metric. This allows you to extract specific 
+numeric values from command output instead of just boolean pattern matching.
+
+##### \<metric_name\> (optional)
+
+The name of the Prometheus metric to create when using \<regexp\> with capture groups. This field 
+is required when \<regexp\> is specified. The captured numeric value will be exported as a gauge 
+metric with this name.
+
 ##### \<credentials\>
 
 A list of endpoints upon which the command specified in \<script\> will be executed.
@@ -162,6 +175,17 @@ scripts:
       port: 22
       user: someotheruser
       keyfile: /path/to/other/private/key
+  - name: cpu_usage_capture
+    script: top -bn1 | grep "Cpu(s)"
+    timeout: 10s
+    pattern: '.*'
+    regexp: 'Cpu\(s\):\s+(\d+\.\d+)%us'
+    metric_name: 'cpu_usage_percent'
+    credentials:
+    - host: host1.example.com
+      port: 22
+      user: someuser
+      keyfile: /path/to/private/key
 ```
 
 **Prometheus config**

@@ -12,7 +12,7 @@ package main
 //
 
 import (
-	"github.com/Nordstrom/ssh_exporter/util"
+	"github.com/esteban-stafford/ssh_exporter/util"
 
 	"fmt"
 	"log"
@@ -54,7 +54,7 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 		<p><a href='/probe'>probe</a></p>
 		<p><a href='/metrics'>metrics</a></p>`
 
-	fmt.Fprintf(w, response)
+	fmt.Fprint(w, response)
 }
 
 func probeHandler(w http.ResponseWriter, r *http.Request) {
@@ -64,12 +64,12 @@ func probeHandler(w http.ResponseWriter, r *http.Request) {
 
 	pattern, err := util.ParseQuery(w, r)
 	if util.SoftCheck(err) {
-		fmt.Fprintf(w, patternHelpText)
+		fmt.Fprint(w, patternHelpText)
 	} else {
 		util.BatchExecute(&conf, pattern)
 
 		response, _ := util.PrometheusFormatResponse(conf)
 
-		fmt.Fprintf(w, response)
+		fmt.Fprint(w, response)
 	}
 }

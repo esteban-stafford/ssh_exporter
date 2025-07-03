@@ -11,13 +11,15 @@ package main
 //
 
 import (
-	"github.com/Nordstrom/ssh_exporter/util"
+	"github.com/esteban-stafford/ssh_exporter/util"
 
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -197,7 +199,7 @@ func TestIntegrationHappyPath(t *testing.T) {
 	// Make sure the status is correct
 	// If this fails we have weirder problems
 	if want, have := http.StatusOK, resp.StatusCode; want != have {
-		t.Errorf("Status code was not OK: %s != %s\n%s", want, have, string(data))
+		t.Errorf("Status code was not OK: %d != %d\n%s", want, have, string(data))
 		t.Fail()
 	}
 
@@ -206,4 +208,86 @@ func TestIntegrationHappyPath(t *testing.T) {
 		t.Error("Is the integration host running?")
 		t.Fail()
 	}
+}
+
+//
+// Test the new regexp capture functionality
+//
+func TestRegexpCapture(t *testing.T) {
+	fmt.Println("Running TestRegexpCapture")
+
+	// Create a test config with regexp capture
+	conf := util.Config{
+		Version: "v0",
+		Scripts: []util.ScriptConfig{
+			{
+				Name: "test_capture",
+				Script: "echo 'Value: 42.5'",
+				Timeout: "5s",
+				Pattern: ".*",
+				Regexp: `Value:\s+(\d+\.\d+)`,
+				MetricName: "test_metric",
+				Credentials: []util.CredentialConfig{
+					{
+						Host: "testhost",
+						Port: "22", 
+						User: "testuser",
+						KeyFile: "/dev/null",
+						ScriptResult: "Value: 42.5",
+						ScriptReturnCode: 0,
+						ResultPatternMatch: 1,
+						CapturedValue: "",
+					},
+				},
+				ParsedTimeout: 5000000000, // 5 seconds in nanoseconds
+				Ignored: false,
+			},
+		},
+	}
+
+	// Simulate the regexp matching logic
+	regexpPattern := conf.Scripts[0].Regexp
+	result := conf.Scripts[0].Credentials[0].ScriptResult
+	
+	// This is the logic from executeScript
+	if regexpPattern != "" && conf.Scripts[0].MetricName != "" {
+		regexpMatch, err := regexp.Compile(regexpPattern)
+		if err != nil {
+			t.Errorf("Failed to compile regexp: %v", err)
+			return
+		}
+		
+		matches := regexpMatch.FindStringSubmatch(result)
+		if len(matches) > 1 {
+			conf.Scripts[0].Credentials[0].CapturedValue = matches[1]
+		}
+	}
+
+	// Test that the captured value is correct
+	expectedValue := "42.5"
+	actualValue := conf.Scripts[0].Credentials[0].CapturedValue
+	if actualValue != expectedValue {
+		t.Errorf("Expected captured value '%s', got '%s'", expectedValue, actualValue)
+	}
+
+	// Test PrometheusFormatResponse includes the new metric
+	output, err := util.PrometheusFormatResponse(conf)
+	if err != nil {
+		t.Errorf("Error formatting output for Prometheus: %s", err)
+		return
+	}
+
+	// Check that the output contains our new metric
+	expectedMetric := "test_metric"
+	expectedValue = "42.5"
+	
+	if !strings.Contains(output, expectedMetric) {
+		t.Errorf("Output should contain metric name '%s'", expectedMetric)
+	}
+	
+	if !strings.Contains(output, expectedValue) {
+		t.Errorf("Output should contain captured value '%s'", expectedValue)
+	}
+
+	fmt.Printf("Prometheus output:\n%s\n", output)
 }

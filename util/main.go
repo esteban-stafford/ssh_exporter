@@ -60,6 +60,8 @@ type ScriptConfig struct {
 	Script        string             `yaml:"script"`
 	Timeout       string             `yaml:"timeout"`
 	Pattern       string             `yaml:"pattern"`
+	Regexp        string             `yaml:"regexp,omitempty"`
+	MetricName    string             `yaml:"metric_name,omitempty"`
 	Credentials   []CredentialConfig `yaml:"credentials"`
 	ParsedTimeout time.Duration      // For internal use only
 	Ignored       bool               // For internal use only
@@ -83,6 +85,7 @@ type CredentialConfig struct {
 	ScriptReturnCode   int    // For internal use only
 	ScriptError        string // For internal use only
 	ResultPatternMatch int8   // For internal use only
+	CapturedValue      string // For internal use only
 }
 
 //
@@ -185,7 +188,7 @@ func BatchExecute(c *Config, p *regexp.Regexp) (Config, error) {
 		if p.MatchString(v.Name) != true {
 			c.Scripts[i].Ignored = true
 		} else {
-			go executeScript(v.Script, v.Pattern, &c.Scripts[i].Credentials, &done, t)
+			go executeScript(v.Script, v.Pattern, v.Regexp, v.MetricName, &c.Scripts[i].Credentials, &done, t)
 		}
 	}
 
@@ -214,9 +217,11 @@ func PrometheusFormatResponse(c Config) (string, error) {
 	var response string
 	exitStatusFormatStr := "ssh_exporter_%s_exit_status{name=\"%s\",host=\"%s\",user=\"%s\",script=\"%s\",exit_status=\"%d\"} %d"
 	patternMatchFormatStr := "ssh_exporter_%s_pattern_match{name=\"%s\",host=\"%s\",user=\"%s\",script=\"%s\",regex=\"%s\"} %d"
+	captureGaugeFormatStr := "%s{name=\"%s\",host=\"%s\",user=\"%s\",script=\"%s\"} %s"
 
 	exitStatusHelpStr := "# HELP ssh_exporter_%s_exit_status Integer exit status of commands and metadata about the command's execution.\n# TYPE ssh_exporter gauge"
 	patternMatchHelpStr := "# HELP ssh_exporter_%s_pattern_match Boolean match of regex on output of script of commands and metadata about the command's execution.\n# TYPE ssh_exporter gauge"
+	captureGaugeHelpStr := "# HELP %s Captured value from regexp with capture group.\n# TYPE %s gauge"
 
 	for _, i := range c.Scripts {
 		if i.Ignored != true {
@@ -233,6 +238,19 @@ func PrometheusFormatResponse(c Config) (string, error) {
 				m := fmt.Sprintf(patternMatchFormatStr, i.Name, i.Name, j.Host, j.User, i.Script, i.Pattern, j.ResultPatternMatch)
 				response = fmt.Sprintf("%s\n%s", response, m)
 			}
+
+			// Add new capture gauge metrics if regexp and metric_name are specified
+			if i.Regexp != "" && i.MetricName != "" {
+				captureDoc := fmt.Sprintf(captureGaugeHelpStr, i.MetricName, i.MetricName)
+				response = fmt.Sprintf("%s\n%s", response, captureDoc)
+				for _, j := range i.Credentials {
+					if j.CapturedValue != "" {
+						c := fmt.Sprintf(captureGaugeFormatStr, i.MetricName, i.Name, j.Host, j.User, i.Script, j.CapturedValue)
+						response = fmt.Sprintf("%s\n%s", response, c)
+					}
+				}
+			}
+
 			response = fmt.Sprintf("%s\n", response)
 		}
 	}
@@ -271,9 +289,13 @@ func adjustConfig(c Config) (Config, error) {
 //
 // TLDR executeScript runs the  given script in parallel on all hosts.
 //
-func executeScript(script, pattern string, creds *[]CredentialConfig, done *sync.WaitGroup, t chan bool) {
+func executeScript(script, pattern, regexpPattern, metricName string, creds *[]CredentialConfig, done *sync.WaitGroup, t chan bool) {
 
 	match, _ := regexp.Compile(pattern)
+	var regexpMatch *regexp.Regexp
+	if regexpPattern != "" {
+		regexpMatch, _ = regexp.Compile(regexpPattern)
+	}
 
 	for i, c := range *creds {
 		done.Add(1)
@@ -287,10 +309,22 @@ func executeScript(script, pattern string, creds *[]CredentialConfig, done *sync
 				(*creds)[i].ScriptError = fmt.Sprintf("%v", err)
 			}
 
+			// Handle original pattern matching for backward compatibility
 			if match.MatchString(result) {
 				(*creds)[i].ResultPatternMatch = 1
 			} else {
 				(*creds)[i].ResultPatternMatch = 0
+			}
+
+			// Handle new regexp capture group functionality
+			if regexpMatch != nil && metricName != "" {
+				matches := regexpMatch.FindStringSubmatch(result)
+				if len(matches) > 1 {
+					// Extract the first capture group
+					(*creds)[i].CapturedValue = matches[1]
+				} else {
+					(*creds)[i].CapturedValue = ""
+				}
 			}
 
 			t <- true
