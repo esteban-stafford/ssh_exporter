@@ -13,6 +13,7 @@ scripts:
     scriptreturncode: 0
     scripterror: ""
     resultpatternmatch: 0
+    capturedvalue: ""
   parsedtimeout: 5s
   ignored: false
 - name: test_timeout
@@ -28,6 +29,7 @@ scripts:
     scriptreturncode: 0
     scripterror: ""
     resultpatternmatch: 0
+    capturedvalue: ""
   parsedtimeout: 1s
   ignored: false
 - name: test_succeed
@@ -43,6 +45,7 @@ scripts:
     scriptreturncode: 0
     scripterror: ""
     resultpatternmatch: 0
+    capturedvalue: ""
   parsedtimeout: 1s
   ignored: false
 - name: test_fail
@@ -58,5 +61,6 @@ scripts:
     scriptreturncode: 0
     scripterror: ""
     resultpatternmatch: 0
+    capturedvalue: ""
   parsedtimeout: 1s
   ignored: false

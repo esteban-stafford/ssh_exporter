@@ -9,3 +9,25 @@ scripts:
       port: 22
       user: someuser
       keyfile: /path/to/local/private.key
+  - name: cpu_usage_capture
+    script: top -bn1 | grep "Cpu(s)"
+    timeout: 10s
+    pattern: '.*'
+    regexp: 'Cpu\(s\):\s+(\d+\.\d+)%us'
+    metric_name: 'cpu_usage_percent'
+    credentials:
+    - host: myhost.example.ext
+      port: 22
+      user: someuser
+      keyfile: /path/to/local/private.key
+  - name: memory_usage_capture
+    script: free -m | grep Mem
+    timeout: 5s
+    pattern: '.*'
+    regexp: 'Mem:\s+(\d+)\s+(\d+)'
+    metric_name: 'memory_total_mb'
+    credentials:
+    - host: myhost.example.ext
+      port: 22
+      user: someuser
+      keyfile: /path/to/local/private.key
